@@ -1,0 +1,6 @@
+flask
+nltk
+spacy
+sentence-transformers
+torch
+numpy
