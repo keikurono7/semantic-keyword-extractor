@@ -1,34 +1,35 @@
-# ---------- Build Stage ----------
-    FROM python:3.10-slim AS builder
+# Stage 1: Build
+FROM python:3.10-slim AS builder
 
-    WORKDIR /app
-    
-    # System deps for building heavy libs
-    RUN apt-get update && apt-get install -y \
-        gcc \
-        build-essential \
-        libffi-dev \
-        libpq-dev \
-        libssl-dev \
-        && pip install --upgrade pip
-    
-    # Install python packages in a temp directory
-    COPY requirements.txt .
-    RUN pip install --prefix=/install -r requirements.txt
-    
-    # Download spaCy model
-    RUN python -m spacy download en_core_web_sm
-    
-    # ---------- Final Stage ----------
-    FROM python:3.10-slim
-    
-    WORKDIR /app
-    
-    # Copy only installed packages from builder
-    COPY --from=builder /install /usr/local
-    COPY . .
-    
-    EXPOSE 8080
-    
-    CMD ["python", "app.py"]
-    
+WORKDIR /app
+
+# Install build tools & download wheels
+COPY requirements.txt .
+RUN pip install --upgrade pip \
+ && pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
+
+# Stage 2: Final Image
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# System dependencies for spacy/nltk
+RUN apt-get update && apt-get install -y \
+    gcc g++ libffi-dev libxml2-dev libxslt-dev libz-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy wheels and install
+COPY --from=builder /wheels /wheels
+COPY requirements.txt .
+RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt
+
+# Download the spacy model AFTER spaCy is installed
+RUN python -m spacy download en_core_web_sm
+
+# Copy app code
+COPY . .
+
+# Expose port and run
+EXPOSE 8080
+CMD ["python", "app.py"]
