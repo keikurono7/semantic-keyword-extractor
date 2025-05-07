@@ -96,3 +96,6 @@ def test():
         "matches": dict(zip(keywords, results)),
         "confidence": dict(zip(keywords, confidences))
     })
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=8080)
