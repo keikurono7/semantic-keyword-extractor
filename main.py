@@ -1,4 +1,3 @@
-# main.py
 from flask import Flask, request, jsonify
 import nltk
 from nltk.util import ngrams
@@ -8,7 +7,6 @@ from sentence_transformers import SentenceTransformer, util
 import spacy
 import numpy as np
 
-# One-time NLTK setup (Google Cloud Functions keeps cache in cold starts)
 nltk.download('punkt', quiet=True)
 nltk.download('stopwords', quiet=True)
 
@@ -65,6 +63,36 @@ def analyze():
         confidences.append(round(best_score, 4))
 
     return jsonify({
+        "matches": dict(zip(keywords, results)),
+        "confidence": dict(zip(keywords, confidences))
+    })
+
+@app.route("/test", methods=["GET"])
+def test():
+    sentence = "Despite the rain, Tesla announced a new car for March 2026."
+    keywords = ["car", "company", "date"]
+
+    phrase_n = 3
+    candidates = extract_candidates(sentence, phrase_n)
+    if not candidates:
+        return jsonify({"matches": [], "confidence": []})
+
+    candidate_embeddings = model.encode(candidates, convert_to_tensor=True)
+    results = []
+    confidences = []
+
+    for keyword in keywords:
+        keyword_embedding = model.encode(keyword, convert_to_tensor=True)
+        similarities = util.cos_sim(keyword_embedding, candidate_embeddings)[0]
+        best_idx = similarities.argmax().item()
+        best_score = similarities[best_idx].item()
+
+        results.append(candidates[best_idx])
+        confidences.append(round(best_score, 4))
+
+    return jsonify({
+        "sentence": sentence,
+        "keywords": keywords,
         "matches": dict(zip(keywords, results)),
         "confidence": dict(zip(keywords, confidences))
     })
