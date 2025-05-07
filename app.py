@@ -69,7 +69,7 @@ def analyze():
 
 @app.route("/test", methods=["GET"])
 def test():
-    sentence = "Despite the rain, Tesla announced a new car for March 2026."
+    sentence = "Despite the rain, Tesla announced a new car for 19 March 2026."
     keywords = ["car", "company", "future date"]
 
     phrase_n = 3
