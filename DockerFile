@@ -19,26 +19,30 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Set env for nltk data path
+ENV NLTK_DATA=/usr/local/nltk_data
+
+# Pre-download NLTK and spaCy models
+RUN mkdir -p /usr/local/nltk_data \
+ && python -m pip install --upgrade pip
+
 # Copy wheels and install
 COPY --from=builder /wheels /wheels
 COPY requirements.txt .
 RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt
 
-# Download nltk data at build time
-RUN python -m nltk.downloader punkt stopwords -d /usr/local/nltk_data
-ENV NLTK_DATA=/usr/local/nltk_data
+# Redownload NLTK data cleanly
+RUN rm -rf /usr/local/nltk_data/tokenizers/punkt && \
+    python -m nltk.downloader punkt stopwords -d /usr/local/nltk_data
 
-# Download the spacy model AFTER spaCy is installed
+# Download the spacy model AFTER installing spaCy
 RUN python -m spacy download en_core_web_sm
 
-# Download sentence-transformers model during build
+# Pre-load sentence-transformers model
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
-
-RUN python3 -m nltk.downloader punkt
 
 # Copy app code
 COPY . .
 
-# Expose port and run
 EXPOSE 8080
 CMD ["python", "app.py"]
