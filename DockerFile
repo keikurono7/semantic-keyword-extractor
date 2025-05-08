@@ -24,6 +24,10 @@ COPY --from=builder /wheels /wheels
 COPY requirements.txt .
 RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt
 
+# Download nltk data at build time
+RUN python -m nltk.downloader punkt stopwords -d /usr/local/nltk_data
+ENV NLTK_DATA=/usr/local/nltk_data
+
 # Download the spacy model AFTER spaCy is installed
 RUN python -m spacy download en_core_web_sm
 
