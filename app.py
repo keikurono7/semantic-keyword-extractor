@@ -1,3 +1,6 @@
+import os
+os.environ['NLTK_DATA'] = '/usr/local/nltk_data'
+
 from flask import Flask, request, jsonify
 import nltk
 from nltk.util import ngrams
@@ -7,6 +10,7 @@ from sentence_transformers import SentenceTransformer, util
 import spacy
 import numpy as np
 
+# Safe download fallback (won’t crash if already downloaded)
 nltk.download('punkt', quiet=True)
 nltk.download('stopwords', quiet=True)
 
@@ -67,12 +71,13 @@ def analyze():
         "confidence": dict(zip(keywords, confidences))
     })
 
+
 @app.route("/test", methods=["GET"])
 def test():
     sentence = "Despite the rain, Tesla announced a new car for 19 March 2026."
     keywords = ["car", "company", "future date"]
-
     phrase_n = 3
+
     candidates = extract_candidates(sentence, phrase_n)
     if not candidates:
         return jsonify({"matches": [], "confidence": []})
@@ -96,6 +101,7 @@ def test():
         "matches": dict(zip(keywords, results)),
         "confidence": dict(zip(keywords, confidences))
     })
+
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080)
