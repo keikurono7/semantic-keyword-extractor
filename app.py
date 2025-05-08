@@ -20,6 +20,9 @@ stop_words = set(stopwords.words('english'))
 nlp = spacy.load("en_core_web_sm")
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
+@app.route("/")
+def home():
+    return "API is live"
 
 def extract_candidates(sentence, phrase_n=4, custom_stopwords=None):
     filtered_words = stop_words.copy()
