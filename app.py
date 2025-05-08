@@ -1,64 +1,59 @@
-import os
-os.environ['NLTK_DATA'] = '/usr/local/nltk_data'
-
-from flask import Flask, request, jsonify
-import nltk
-from nltk.util import ngrams
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
+from fastapi import FastAPI, Request
+from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer, util
+from typing import List, Optional
 import spacy
-import numpy as np
+import uvicorn
 
-# Safe download fallback (won’t crash if already downloaded)
-nltk.download('punkt', quiet=True)
-nltk.download('stopwords', quiet=True)
+app = FastAPI()
 
-app = Flask(__name__)
-
-stop_words = set(stopwords.words('english'))
 nlp = spacy.load("en_core_web_sm")
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-@app.route("/")
-def home():
-    return "API is live"
+class AnalyzeRequest(BaseModel):
+    sentence: str
+    keywords: List[str]
+    phrase_n: Optional[int] = 3
+    custom_stopwords: Optional[List[str]] = []
 
-def extract_candidates(sentence, phrase_n=4, custom_stopwords=None):
-    filtered_words = stop_words.copy()
+def extract_candidates(text, phrase_n=4, custom_stopwords=None):
+    doc = nlp(text.lower())
+    stop_words = set(spacy.lang.en.stop_words.STOP_WORDS)
     if custom_stopwords:
-        filtered_words.update(custom_stopwords)
+        stop_words.update(custom_stopwords)
 
-    tokens = word_tokenize(sentence.lower())
+    tokens = [token.text for token in doc if token.is_alpha and token.text not in stop_words]
     phrases = []
+
     for n in range(1, phrase_n + 1):
-        for gram in ngrams(tokens, n):
-            if not any(word in filtered_words for word in gram):
-                phrase = " ".join(gram)
+        n_grams = zip(*[tokens[i:] for i in range(n)])
+        for gram in n_grams:
+            phrase = " ".join(gram)
+            if phrase not in stop_words:
                 phrases.append(phrase)
 
-    doc = nlp(sentence)
-    entities = [ent.text.strip() for ent in doc.ents
-                if ent.label_ in ["DATE", "TIME", "PERSON", "ORG", "GPE", "EVENT", "PRODUCT"]]
+    entities = [ent.text.strip() for ent in doc.ents if ent.label_ in ["DATE", "TIME", "PERSON", "ORG", "GPE", "EVENT", "PRODUCT"]]
+    combined = list(set(phrases + entities))
+    return [p for p in combined if len(p) > 2]
 
-    combined = list(set(entities + phrases))
-    return [p for p in combined if len(p) > 2 and p.lower() not in filtered_words]
+@app.get("/")
+async def root():
+    return {"message": "API is live"}
 
+@app.post("/analyze")
+async def analyze(request: AnalyzeRequest):
+    sentence = request.sentence
+    keywords = request.keywords
+    phrase_n = request.phrase_n
+    custom_stopwords = request.custom_stopwords
 
-@app.route("/analyze", methods=["POST"])
-def analyze():
-    data = request.get_json()
-    sentence = data.get("sentence", "")
-    keywords = data.get("keywords", [])
-    phrase_n = data.get("phrase_n", 3)
-
-    candidates = extract_candidates(sentence, phrase_n)
+    candidates = extract_candidates(sentence, phrase_n, custom_stopwords)
     if not candidates:
-        return jsonify({"matches": [], "confidence": []})
+        return {"matches": {}, "confidence": {}}
 
     candidate_embeddings = model.encode(candidates, convert_to_tensor=True)
-    results = []
-    confidences = []
+    matches = {}
+    confidences = {}
 
     for keyword in keywords:
         keyword_embedding = model.encode(keyword, convert_to_tensor=True)
@@ -66,45 +61,11 @@ def analyze():
         best_idx = similarities.argmax().item()
         best_score = similarities[best_idx].item()
 
-        results.append(candidates[best_idx])
-        confidences.append(round(best_score, 4))
+        matches[keyword] = candidates[best_idx]
+        confidences[keyword] = round(best_score, 4)
 
-    return jsonify({
-        "matches": dict(zip(keywords, results)),
-        "confidence": dict(zip(keywords, confidences))
-    })
+    return {"matches": matches, "confidence": confidences}
 
-
-@app.route("/test", methods=["GET"])
-def test():
-    sentence = "Despite the rain, Tesla announced a new car for 19 March 2026."
-    keywords = ["car", "company", "future date"]
-    phrase_n = 3
-
-    candidates = extract_candidates(sentence, phrase_n)
-    if not candidates:
-        return jsonify({"matches": [], "confidence": []})
-
-    candidate_embeddings = model.encode(candidates, convert_to_tensor=True)
-    results = []
-    confidences = []
-
-    for keyword in keywords:
-        keyword_embedding = model.encode(keyword, convert_to_tensor=True)
-        similarities = util.cos_sim(keyword_embedding, candidate_embeddings)[0]
-        best_idx = similarities.argmax().item()
-        best_score = similarities[best_idx].item()
-
-        results.append(candidates[best_idx])
-        confidences.append(round(best_score, 4))
-
-    return jsonify({
-        "sentence": sentence,
-        "keywords": keywords,
-        "matches": dict(zip(keywords, results)),
-        "confidence": dict(zip(keywords, confidences))
-    })
-
-
+# Run this in local dev
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8080)
