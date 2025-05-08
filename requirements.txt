@@ -1,8 +1,4 @@
-flask
-nltk
+fastapi
+uvicorn[standard]
 spacy
 sentence-transformers
-torch
-numpy
-wheel
-cython
