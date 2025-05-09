@@ -54,31 +54,26 @@ def get_model_embedding(text):
     return model.encode(text, convert_to_tensor=True)
 
 def extract_candidates(sentence: str, phrase_n: int = 4, custom_stopwords: Optional[Set[str]] = None):
-    """Extract candidate phrases and entities from a sentence"""
-    # Create filtered stopwords set
     filtered_words = stop_words.copy()
     if custom_stopwords:
         filtered_words.update(custom_stopwords)
-    
-    # Process with spaCy for entities and better tokenization
+
     doc = nlp(sentence)
     
-    # Extract entities
+    # Merge multi-word entities and chunks
+    with doc.retokenize() as retokenizer:
+        for ent in doc.ents:
+            retokenizer.merge(ent)
+        for chunk in doc.noun_chunks:
+            retokenizer.merge(chunk)
+
+    # Extract useful entities + noun phrases
     entities = [ent.text.strip() for ent in doc.ents if ent.label_ in RELEVANT_ENTITY_TYPES]
-    
-    # Extract n-grams
-    tokens = [token.text.lower() for token in doc if not token.is_punct]
-    phrases = []
-    
-    for n in range(1, min(phrase_n + 1, len(tokens) + 1)):
-        for gram in ngrams(tokens, n):
-            if not any(word in filtered_words for word in gram):
-                phrase = " ".join(gram)
-                phrases.append(phrase)
-    
-    # Combine and deduplicate
-    candidates = list(set(entities + phrases))
-    return [p for p in candidates if len(p) > 2 and p.lower() not in filtered_words]
+    noun_chunks = [chunk.text.strip() for chunk in doc.noun_chunks if len(chunk.text.split()) <= phrase_n]
+
+    candidates = list(set(entities + noun_chunks))
+    return [c for c in candidates if len(c) > 2 and c.lower() not in filtered_words]
+
 
 def find_best_matches(candidates: List[str], keywords: List[str]):
     """Find the best matching candidate for each keyword"""
